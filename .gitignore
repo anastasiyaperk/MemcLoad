@@ -8,7 +8,7 @@ profile_default/
 ipython_config.py
 
 __pypackages__/
-
+__pycache__
 # Environments
 .env
 .venv
@@ -19,3 +19,5 @@ env.bak/
 venv.bak/
 
 source_data/*.tsv.gz
+
+.idea
