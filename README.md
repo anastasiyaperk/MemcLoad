@@ -13,7 +13,7 @@
 2) Активируйте виртуальное окружение: `source venv/bin/activate`
 3) Установите зависимости: `pip install -r requirements.txt`
 4) Запустите memcache в docker-контейнере, выполнив команду: `docker-compose up -d`
-5) Запустите web-сервер: `python3 memc_load_multy.py`
+5) Запустите приложение: `python3 memc_load_multy.py`
 
 
 
