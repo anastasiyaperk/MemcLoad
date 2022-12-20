@@ -21,5 +21,5 @@ venv.bak/
 source_data/*.tsv.gz
 
 .idea
-homework.pdf
+*.pdf
 *.tsv.gz
