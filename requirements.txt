@@ -1,3 +1,2 @@
 protobuf~=3.19.6
-
 pymemcache~=4.0.0
