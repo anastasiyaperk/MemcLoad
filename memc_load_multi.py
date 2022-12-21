@@ -35,33 +35,48 @@ def dot_rename(path: str):
     os.rename(path, os.path.join(head, "." + fn))
 
 
-def insert_appsinstalled(memc_addr: str, appsinstalled: AppsInstalled, dry_run=False) -> bool:
+def serialize_appsinstalled(appsinstalled: AppsInstalled) -> Tuple[str, Any]:
     """
-    Insert protobuf message to memcache by address
+    Serialize protobuf message
 
-    :param memc_addr: memcache address
     :param appsinstalled: app installed log line info
-    :param dry_run: flag for dry run
-    :return: True, if message insert in memcache successful, else - False
+    :return: serialized key-value pair
     """
     ua = appsinstalled_pb2.UserApps()
     ua.lat = appsinstalled.lat
     ua.lon = appsinstalled.lon
+
     key = "%s:%s" % (appsinstalled.dev_type, appsinstalled.dev_id)
+
     ua.apps.extend(appsinstalled.apps)
     packed = ua.SerializeToString()
+
+    return key, packed
+
+
+def insert_messages_batch_in_memcache(memc_addr: str,
+                                      batch: Dict[str, Any],
+                                      dry_run: bool = False) -> Union[List[Any], List[Union[bytes, str]]]:
+    """
+    Insert batch of serialized messages in memcache
+
+    :param memc_addr: memcache address
+    :param batch: batch of serialized messages
+    :param dry_run: dry run flag
+    :return: Returns a list of keys that failed to be inserted
+    """
+    failed_keys = []
     try:
         if dry_run:
-            logging.debug("%s - %s -> %s" % (memc_addr, key, str(ua).replace("\n", " ")))
+            logging.debug(f"{memc_addr} - {batch}")
         else:
             memc_client = get_memc_client(addr=memc_addr, memcache_connections=MEMCACHE_CONNECTIONS)
-            memc_client.cache_set(key, packed)
+            failed_keys = memc_client.cache_set_multi(batch)
 
     except Exception as e:
         logging.exception("Cannot write to memc %s: %s" % (memc_addr, e))
-        return False
 
-    return True
+    return failed_keys
 
 
 def parse_appsinstalled(line: str) -> Union[AppsInstalled, None]:
@@ -122,7 +137,13 @@ def batch_processing(batch: List[Any], device_memc: Dict[str, str], dry: bool = 
     :return: number of processed lines and errors
     """
     logging.info(f'[Process {current_process()}]: do batch processing')
-    errors, processed = 0, 0
+    errors, processed, all_keys_count = 0, 0, 0
+    serialized_batch = {
+        "idfa": {},
+        "gaid": {},
+        "adid": {},
+        "dvid": {}
+        }
     for line in batch:
         line = line.strip()
         if not line:
@@ -131,20 +152,26 @@ def batch_processing(batch: List[Any], device_memc: Dict[str, str], dry: bool = 
         appsinstalled = parse_appsinstalled(line)
         if not appsinstalled:
             errors += 1
+            all_keys_count += 1
             continue
 
-        memc_addr = device_memc.get(appsinstalled.dev_type)
+        # Put packed message in storing dict
+        key, packed = serialize_appsinstalled(appsinstalled)
+        serialized_batch[appsinstalled.dev_type][key] = packed
+        all_keys_count += 1
+
+    for dev_type in serialized_batch.keys():
+        memc_addr = device_memc.get(dev_type)
         if not memc_addr:
-            errors += 1
-            logging.error(f"Unknown device type: {appsinstalled.dev_type}")
+            logging.error(f"Unknown device type: {dev_type}")
             continue
 
-        ok = insert_appsinstalled(memc_addr, appsinstalled, dry)
-        if ok:
-            processed += 1
-        else:
-            errors += 1
+        failed_keys = insert_messages_batch_in_memcache(memc_addr=memc_addr,
+                                                        batch=serialized_batch[dev_type],
+                                                        dry_run=dry)
+        errors += len(failed_keys)
 
+    processed = all_keys_count - errors
     return processed, errors
 
 

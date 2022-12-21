@@ -1,7 +1,7 @@
 import functools
 import logging
 import time
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional, Union
 
 import pymemcache
 
@@ -43,16 +43,27 @@ class MemcacheClient:
         return self.__client.get(key, None)
 
     @retry(ConnectionRefusedError)
-    def cache_set(self, key, value, expire_time: int = 60):
+    def cache_set(self, key, value, expire_time: int = 60)-> Optional[bool]:
         """
         Set value with memcache client
 
         :param key: key
         :param value: value to set on key
         :param expire_time: number of seconds until the item is expired from the cache
-        :return: None
+        :return: If no exception is raised, always returns True. If an exception is raised, the set may or may not have occurred.
         """
         return self.__client.set(key, value, expire_time)
+
+    @retry(ConnectionRefusedError)
+    def cache_set_multi(self, data: Dict[str, Any], expire_time: int = 60)-> List[Union[bytes, str]]:
+        """
+        Set multiple data with memcache client
+
+        :param data: key-values pairs in dict to set in memcache
+        :param expire_time: number of seconds until the item is expired from the cache
+        :return: Returns a list of keys that failed to be inserted.
+        """
+        return self.__client.set_multi(data, expire_time)
 
 
 def get_memc_client(addr: str, memcache_connections: Dict[str, MemcacheClient]) -> MemcacheClient:
